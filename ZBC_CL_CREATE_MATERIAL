@@ -1,0 +1,116 @@
+CLASS ZBC_CL_CREATE_MATERIAL DEFINITION
+  PUBLIC
+  CREATE PUBLIC .
+
+  PUBLIC SECTION.
+
+    METHODS MATERIALS_CONTROL
+      IMPORTING
+        !IT_TABLE  TYPE ZBC_S_MATERIAL_CREATE
+      EXPORTING
+        !ET_RETURN TYPE ZBC_TT_RETURN .
+  PROTECTED SECTION.
+  PRIVATE SECTION.
+    METHODS MATERIAL_CREATE
+      IMPORTING IS_MATERIAL TYPE ZBC_S_GET_MATERIALS
+      EXPORTING E_RETURN    TYPE BAPIRET2.
+
+ENDCLASS.
+
+
+
+CLASS ZBC_CL_CREATE_MATERIAL IMPLEMENTATION.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZBC_CL_CREATE_MATERIAL->MATERIALS_CONTROL
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IT_TABLE                       TYPE        ZBC_S_MATERIAL_CREATE
+* | [<---] ET_RETURN                      TYPE        ZBC_TT_RETURN
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD MATERIALS_CONTROL.
+*
+    "To check whether the submitted material numbers have already been created
+    SELECT * FROM MARA
+        INTO TABLE @DATA(T_MARA)
+            FOR ALL ENTRIES IN @IT_TABLE-MATERIALS
+        WHERE MATNR EQ @IT_TABLE-MATERIALS-MATNR.
+
+    LOOP AT IT_TABLE-MATERIALS INTO DATA(W_TABLE).
+      " Control Material Number
+      TRY.
+          DATA(W_MARA) = T_MARA[ MATNR = W_TABLE-MATNR ].
+          DATA(ERROR) = |Material number { W_TABLE-MATNR } has already been created|.
+          APPEND VALUE #( TYPE  = 'E'
+                          ERROR = ERROR
+                      ) TO ET_RETURN.
+
+          CLEAR ERROR.
+          RETURN.
+        CATCH CX_ROOT INTO DATA(LX_ROOT).
+
+          ME->MATERIAL_CREATE(
+            EXPORTING
+              IS_MATERIAL = W_TABLE
+            IMPORTING
+              E_RETURN    = DATA(RETURN)
+          ).
+          APPEND VALUE #( TYPE  = RETURN-TYPE
+                          ERROR = RETURN-MESSAGE
+             ) TO ET_RETURN.
+
+          CLEAR RETURN.
+      ENDTRY.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Private Method ZBC_CL_CREATE_MATERIAL->MATERIAL_CREATE
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] IS_MATERIAL                    TYPE        ZBC_S_GET_MATERIALS
+* | [<---] E_RETURN                       TYPE        BAPIRET2
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD MATERIAL_CREATE.
+
+    DATA: HEADER TYPE BAPIMATHEAD,
+          MARA   TYPE BAPI_MARA,
+          MARAX  TYPE BAPI_MARAX,
+          T_MAKT TYPE TABLE OF BAPI_MAKT.
+
+    CLEAR : HEADER, MARA, MARAX, T_MAKT[], E_RETURN.
+
+    TRY.
+
+        HEADER-MATERIAL      = IS_MATERIAL-MATNR.
+        HEADER-IND_SECTOR    = IS_MATERIAL-MBRSH.
+        HEADER-MATL_TYPE     = IS_MATERIAL-MTART.
+        HEADER-BASIC_VIEW    = ABAP_FALSE.
+        MARA-MATL_GROUP      = IS_MATERIAL-MATKL.
+        MARA-BASE_UOM        = IS_MATERIAL-MEINS.
+        MARAX-MATL_GROUP     = ABAP_FALSE.
+        MARAX-BASE_UOM       = ABAP_FALSE.
+
+        APPEND VALUE #( LANGU     = SY-LANGU
+                        MATL_DESC = IS_MATERIAL-MAKTX
+                     ) TO T_MAKT.
+
+        CALL FUNCTION 'BAPI_MATERIAL_SAVEDATA'
+          EXPORTING
+            HEADDATA            = HEADER
+            CLIENTDATA          = MARA
+            CLIENTDATAX         = MARAX
+          IMPORTING
+            RETURN              = E_RETURN
+          TABLES
+            MATERIALDESCRIPTION = T_MAKT.
+
+      CATCH CX_ROOT INTO DATA(LX_ROOT).
+
+    ENDTRY.
+
+    CLEAR : HEADER, MARA, MARAX, T_MAKT[].
+
+  ENDMETHOD.
+ENDCLASS.
