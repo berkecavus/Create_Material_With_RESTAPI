@@ -1,0 +1,77 @@
+CLASS zbc_cl_get_materials_restapi DEFINITION
+  PUBLIC
+  CREATE PUBLIC .
+
+  PUBLIC SECTION.
+
+    INTERFACES if_http_extension .
+  PROTECTED SECTION.
+  PRIVATE SECTION.
+ENDCLASS.
+
+
+
+CLASS ZBC_CL_GET_MATERIALS_RESTAPI IMPLEMENTATION.
+
+
+* <SIGNATURE>---------------------------------------------------------------------------------------+
+* | Instance Public Method ZBC_CL_GET_MATERIALS_RESTAPI->IF_HTTP_EXTENSION~HANDLE_REQUEST
+* +-------------------------------------------------------------------------------------------------+
+* | [--->] SERVER                         TYPE REF TO IF_HTTP_SERVER
+* +--------------------------------------------------------------------------------------</SIGNATURE>
+  METHOD if_http_extension~handle_request.
+
+    DATA: cl_fdt_json TYPE REF TO cl_fdt_json.
+    DATA: materials TYPE zbc_s_material_create.
+    DATA: t_return  TYPE zbc_tt_return.
+
+    DATA(lv_path_info)       = server->request->get_header_field( name = '~PATH_INFO' ).
+    DATA(lv_request_method)  = server->request->get_header_field( name = '~REQUEST_METHOD' ).
+    DATA(lv_req_body)        = server->request->get_cdata( ).
+
+    IF lv_req_body IS NOT INITIAL.
+
+      REPLACE ALL OCCURRENCES OF REGEX '[^[:print:]]' IN lv_req_body WITH space.
+      REPLACE ALL OCCURRENCES OF REGEX '#' IN lv_req_body WITH space.
+      CONDENSE lv_req_body.
+      CREATE OBJECT cl_fdt_json.
+
+      TRY.
+          CLEAR: materials, t_return.
+          "Take the materials coming from Rest Api to the internal table
+          CALL METHOD cl_fdt_json=>json_to_data
+            EXPORTING
+              iv_json = lv_req_body
+            CHANGING
+              ca_data = materials.
+
+          IF materials IS NOT INITIAL.
+
+            "Create Material
+            NEW zbc_cl_create_material( )->materials_control(
+              EXPORTING
+                it_table  = materials
+              IMPORTING
+                et_return = t_return
+            ).
+
+          ENDIF.
+
+*          "Converting the returned errors to JSON format
+          CALL METHOD cl_fdt_json=>data_to_json
+            EXPORTING
+              ia_data = t_return
+            RECEIVING
+              rv_json = DATA(v_json).
+
+
+          "Sending back the data converted to json format.
+          CALL METHOD server->response->set_cdata( data = v_json ).
+*
+      ENDTRY.
+
+    ENDIF.
+
+
+  ENDMETHOD.
+ENDCLASS.
